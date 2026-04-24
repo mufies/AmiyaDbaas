@@ -1,0 +1,6 @@
+@AmiyaDbaasManager_HostAddress = http://localhost:5107
+
+GET {{AmiyaDbaasManager_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
