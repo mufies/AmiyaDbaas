@@ -1,5 +1,7 @@
 using System.Text;
+using System.Text.Json.Serialization;
 using AmiyaDbaasManager.Data;
+using AmiyaDbaasManager.Hubs;
 using AmiyaDbaasManager.Middlewares;
 using AmiyaDbaasManager.Models;
 using AmiyaDbaasManager.Repositories;
@@ -11,7 +13,6 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -40,6 +41,22 @@ builder
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
             ClockSkew = TimeSpan.Zero,
         };
+
+        options.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                var path = context.HttpContext.Request.Path;
+
+                // Nếu request gửi tới hub của SignalR thì lấy token từ query string
+                if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+                {
+                    context.Token = accessToken;
+                }
+                return Task.CompletedTask;
+            }
+        };
     });
 
 // ─── DI Repositories & Services ───────────────────────────────────────────────
@@ -54,12 +71,16 @@ builder.Services.AddScoped<IDbInstanceService, DbInstanceService>();
 builder.Services.AddScoped<IPlanService, PlanService>();
 builder.Services.AddScoped<IUserSubscriptionService, UserSubscriptionService>();
 builder.Services.AddHostedService<ContainerHealthCheckWorker>();
+builder.Services.AddHostedService<UserSubscriptionCheckWorker>();
+builder.Services.AddSignalR();
 
 // ─── Controllers & Swagger ────────────────────────────────────────────────────
-builder.Services.AddControllers().AddJsonOptions(options =>
-{
-    options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
-});
+builder
+    .Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+    });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -110,7 +131,7 @@ if (app.Environment.IsDevelopment())
         c.EnablePersistAuthorization();
     });
 }
-
+app.MapHub<InstanceLogs>("/hubs/instancelogs");
 app.UseHttpsRedirection();
 
 app.UseAuthentication();

@@ -11,4 +11,5 @@ public interface IDockerService
     Task<ApiResponse<DbInstanceResponseDto>> StopInstanceAsync(Guid instanceId, string userId);
     Task<ApiResponse<string>> DeleteInstanceAsync(Guid instanceId, string userId);
     Task ContainerHealthCheck();
+    Task SendLogsToGroup(string containerId, Microsoft.AspNetCore.SignalR.IHubContext<AmiyaDbaasManager.Hubs.InstanceLogs> hubContext);
 }

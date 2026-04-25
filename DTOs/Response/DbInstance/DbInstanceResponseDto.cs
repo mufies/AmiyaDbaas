@@ -4,6 +4,7 @@ public class DbInstanceResponseDto
 {
     public Guid Id { get; set; }
     public string InstanceName { get; set; } = string.Empty;
+    public string DockerContainerId { get; set; } = string.Empty;
     public string Engine { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
     public string ConnectionString { get; set; } = string.Empty;

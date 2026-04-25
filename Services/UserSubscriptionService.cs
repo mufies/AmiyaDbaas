@@ -13,7 +13,8 @@ public class UserSubscriptionService : IUserSubscriptionService
     public UserSubscriptionService(
         IUserSubscriptionRepository subscriptionRepo,
         IPlanRepository planRepo,
-        IDbInstanceRepo instanceRepo)
+        IDbInstanceRepo instanceRepo
+    )
     {
         _subscriptionRepo = subscriptionRepo;
         _planRepo = planRepo;
@@ -27,7 +28,8 @@ public class UserSubscriptionService : IUserSubscriptionService
 
     public async Task<UserSubscription> AssignPlan(Guid userId, Guid planId)
     {
-        var plan = await _planRepo.GetById(planId)
+        var plan =
+            await _planRepo.GetById(planId)
             ?? throw new KeyNotFoundException($"Plan {planId} không tồn tại.");
 
         // Deactivate subscription cũ (nếu có)
@@ -61,12 +63,14 @@ public class UserSubscriptionService : IUserSubscriptionService
 
         if (subscription is null)
             throw new InvalidOperationException(
-                "Bạn chưa có gói subscription. Vui lòng đăng ký một gói để tiếp tục.");
+                "Bạn chưa có gói subscription. Vui lòng đăng ký một gói để tiếp tục."
+            );
 
         // Kiểm tra thời hạn
         if (subscription.EndDate.HasValue && subscription.EndDate.Value < DateTime.UtcNow)
             throw new InvalidOperationException(
-                "Gói subscription của bạn đã hết hạn. Vui lòng gia hạn để tiếp tục.");
+                "Gói subscription của bạn đã hết hạn. Vui lòng gia hạn để tiếp tục."
+            );
 
         // Đếm số instance hiện tại của user
         var instances = await _instanceRepo.GetDbInstanceOfUser(userId.ToString());
@@ -74,7 +78,42 @@ public class UserSubscriptionService : IUserSubscriptionService
 
         if (currentCount >= subscription.MaxInstances)
             throw new InvalidOperationException(
-                $"Bạn đã đạt giới hạn {subscription.MaxInstances} instance của gói '{subscription.Plan?.Name ?? "hiện tại"}'. " +
-                "Vui lòng nâng cấp gói để tạo thêm.");
+                $"Bạn đã đạt giới hạn {subscription.MaxInstances} instance của gói '{subscription.Plan?.Name ?? "hiện tại"}'. "
+                    + "Vui lòng nâng cấp gói để tạo thêm."
+            );
+    }
+
+    public async Task checkUserPlan()
+    {
+        var semaphore = new SemaphoreSlim(10);
+        int page = 1;
+        int pageSize = 50;
+
+        while (true)
+        {
+            var userLists = await _subscriptionRepo.GetUserSubscriptionsAsync(page, pageSize);
+
+            if (userLists == null || userLists.Count == 0)
+            {
+                break;
+            }
+
+            var tasks = userLists.Select(async user =>
+            {
+                await semaphore.WaitAsync();
+
+                try
+                {
+                    user.IsActive = false;
+                    await _subscriptionRepo.Update(user);
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            });
+
+            await Task.WhenAll(tasks);
+        }
     }
 }

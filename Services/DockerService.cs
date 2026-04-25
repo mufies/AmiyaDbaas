@@ -3,6 +3,7 @@ using AmiyaDbaasManager.DTOs.Request.DbInstance;
 using AmiyaDbaasManager.DTOs.Response;
 using AmiyaDbaasManager.DTOs.Response.DbInstance;
 using AmiyaDbaasManager.Enums;
+using AmiyaDbaasManager.Hubs;
 using AmiyaDbaasManager.Mappers;
 using AmiyaDbaasManager.Models;
 using AmiyaDbaasManager.Repositories.Interfaces;
@@ -10,6 +11,7 @@ using AmiyaDbaasManager.Services.interfaces;
 using AmiyaDbaasManager.Services.Interfaces;
 using Docker.DotNet;
 using Docker.DotNet.Models;
+using Microsoft.AspNetCore.SignalR;
 
 namespace AmiyaDbaasManager.Services;
 
@@ -165,7 +167,7 @@ public class DockerService : IDockerService
 
         var createParam = new CreateContainerParameters
         {
-            Name = request.InstanceName,
+            Name = $"tenant_{request.UserId}_{Guid.NewGuid()}",
             Image = $"{imageName}:{imageTag}",
             Env = DbEngineConfig.GetEnvVars(engine, rawPassword),
             HostConfig = new HostConfig
@@ -208,6 +210,7 @@ public class DockerService : IDockerService
         {
             Id = Guid.NewGuid(),
             InstanceName = request.InstanceName,
+            DockerContainerId = containerId,
             Engine = request.Engine,
             Status = "Running",
             Description = request.Description,
@@ -264,7 +267,7 @@ public class DockerService : IDockerService
         try
         {
             await _dockerClient.Containers.StartContainerAsync(
-                instance.InstanceName,
+                instance.DockerContainerId,
                 new ContainerStartParameters()
             );
 
@@ -297,7 +300,7 @@ public class DockerService : IDockerService
         try
         {
             await _dockerClient.Containers.StopContainerAsync(
-                instance.InstanceName,
+                instance.DockerContainerId,
                 new ContainerStopParameters()
             );
 
@@ -322,12 +325,12 @@ public class DockerService : IDockerService
         try
         {
             await _dockerClient.Containers.StopContainerAsync(
-                instance.InstanceName,
+                instance.DockerContainerId,
                 new ContainerStopParameters()
             );
 
             await _dockerClient.Containers.RemoveContainerAsync(
-                instance.InstanceName,
+                instance.DockerContainerId,
                 new ContainerRemoveParameters()
             );
             await _dbInstanceRepo.DeleteInstance(instanceId, userid);
@@ -365,25 +368,73 @@ public class DockerService : IDockerService
     public async Task ContainerHealthCheck()
     {
         var semaphore = new SemaphoreSlim(10);
-        var dbInstance = await _dbInstanceRepo.GetAll();
-        var tasks = dbInstance.Select(async instance =>
+        int page = 1;
+        int pageSize = 50;
+
+        while (true)
         {
-            await semaphore.WaitAsync();
+            var dbInstances = await _dbInstanceRepo.GetPagedAsync(page, pageSize);
 
-            try
+            if (dbInstances == null || dbInstances.Count == 0)
             {
-                var container = await _dockerClient.Containers.InspectContainerAsync(
-                    instance.InstanceName.ToString()
-                );
-                instance.Status = container.State.Status == "running" ? "Running" : "Stopped";
+                break;
             }
-            finally
-            {
-                semaphore.Release();
-            }
-        });
-        await Task.WhenAll(tasks);
 
-        await _dbInstanceRepo.UpdateRangeAsync(dbInstance);
+            var tasks = dbInstances.Select(async instance =>
+            {
+                await semaphore.WaitAsync();
+
+                try
+                {
+                    try
+                    {
+                        var container = await _dockerClient.Containers.InspectContainerAsync(
+                            instance.DockerContainerId
+                        );
+                        instance.Status =
+                            container.State.Status == "running" ? "Running" : "Stopped";
+                    }
+                    catch (Exception)
+                    {
+                        // Nếu không tìm thấy container hoặc có lỗi gọi đến Docker daemon
+                        instance.Status = "Error";
+                    }
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            });
+
+            await Task.WhenAll(tasks);
+
+            await _dbInstanceRepo.UpdateRangeAsync(dbInstances);
+            page++;
+        }
+    }
+
+    public async Task SendLogsToGroup(string containerId, IHubContext<InstanceLogs> hubContext)
+    {
+        var stream = await _dockerClient.Containers.GetContainerLogsAsync(
+            containerId,
+            new ContainerLogsParameters
+            {
+                ShowStdout = true,
+                Follow = true,
+                ShowStderr = true,
+                Timestamps = true,
+            },
+            CancellationToken.None
+        );
+
+        using var reader = new StreamReader(stream);
+        while (!reader.EndOfStream)
+        {
+            var line = await reader.ReadLineAsync();
+            if (line == null)
+                continue;
+
+            await hubContext.Clients.Group(containerId).SendAsync("ReceiveLog", line);
+        }
     }
 }

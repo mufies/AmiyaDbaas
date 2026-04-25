@@ -18,4 +18,5 @@ public interface IUserSubscriptionService
     /// Throw InvalidOperationException nếu đã đạt giới hạn hoặc chưa có subscription.
     /// </summary>
     Task ValidatePlanLimit(Guid userId);
+    Task checkUserPlan();
 }

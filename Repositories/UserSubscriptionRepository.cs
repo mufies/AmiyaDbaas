@@ -16,8 +16,8 @@ public class UserSubscriptionRepository : IUserSubscriptionRepository
 
     public async Task<UserSubscription?> GetActiveByUserId(Guid userId)
     {
-        return await _context.UserSubscriptions
-            .Include(s => s.Plan)
+        return await _context
+            .UserSubscriptions.Include(s => s.Plan)
             .Where(s => s.UserId == userId && s.IsActive)
             .OrderByDescending(s => s.CreatedAt)
             .FirstOrDefaultAsync();
@@ -36,5 +36,14 @@ public class UserSubscriptionRepository : IUserSubscriptionRepository
         _context.UserSubscriptions.Update(subscription);
         await _context.SaveChangesAsync();
         return subscription;
+    }
+
+    public async Task<List<UserSubscription>> GetUserSubscriptionsAsync(int page, int pageSize)
+    {
+        return await _context
+            .UserSubscriptions.Where(u => u.EndDate < DateTime.UtcNow && u.IsActive)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
     }
 }

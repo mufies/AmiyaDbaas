@@ -11,6 +11,7 @@ public static class DbInstanceMapper
         {
             Id             = instance.Id,
             InstanceName   = instance.InstanceName,
+            DockerContainerId = instance.DockerContainerId,
             Engine         = instance.Engine,
             Status         = instance.Status,
             Description    = instance.Description,

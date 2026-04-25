@@ -7,6 +7,7 @@ public class DbInstance
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string InstanceName { get; set; } = string.Empty;
+    public string DockerContainerId { get; set; } = string.Empty;
     public string Engine { get; set; } = string.Empty;
     public string Status { get; set; } = "Pending";
     public string Description { get; set; } = string.Empty;

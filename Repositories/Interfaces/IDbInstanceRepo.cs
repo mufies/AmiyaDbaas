@@ -12,5 +12,6 @@ namespace AmiyaDbaasManager.Repositories.Interfaces
         Task<DbInstance?> UpdateStatus(Guid instanceId, string status);
         Task DeleteInstance(Guid id, string userId);
         Task UpdateRangeAsync(IEnumerable<DbInstance> instances);
+        Task<List<DbInstance>> GetPagedAsync(int page, int pageSize);
     }
 }

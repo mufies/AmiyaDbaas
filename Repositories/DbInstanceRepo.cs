@@ -71,4 +71,12 @@ public class DbInstanceRepo : IDbInstanceRepo
         _dbcontext.DbInstances.UpdateRange(instances);
         await _dbcontext.SaveChangesAsync();
     }
+
+    public async Task<List<DbInstance>> GetPagedAsync(int page, int pageSize)
+    {
+        return await _dbcontext.DbInstances
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+    }
 }

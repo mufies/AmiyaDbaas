@@ -7,4 +7,5 @@ public interface IUserSubscriptionRepository
     Task<UserSubscription?> GetActiveByUserId(Guid userId);
     Task<UserSubscription> Create(UserSubscription subscription);
     Task<UserSubscription> Update(UserSubscription subscription);
+    Task<List<UserSubscription>> GetUserSubscriptionsAsync(int page, int pageSize);
 }
