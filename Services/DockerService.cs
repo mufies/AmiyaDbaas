@@ -19,11 +19,13 @@ public class DockerService : IDockerService
     private readonly IPortManagerService _portService;
     private readonly IDbInstanceRepo _dbInstanceRepo;
     private readonly IAuthService _authService;
+    private readonly IUserSubscriptionService _subscriptionService;
 
     public DockerService(
         IPortManagerService portService,
         IDbInstanceRepo dbInstanceRepo,
-        IAuthService authService
+        IAuthService authService,
+        IUserSubscriptionService subscriptionService
     )
     {
         _dockerClient = new DockerClientConfiguration(
@@ -33,13 +35,14 @@ public class DockerService : IDockerService
         _portService = portService;
         _dbInstanceRepo = dbInstanceRepo;
         _authService = authService;
+        _subscriptionService = subscriptionService;
     }
 
     public async Task<ApiResponse<DbInstanceResponseDto>> createDbImage(
         CreateDbInstanceRequestDto request
     )
     {
-        // 1. Validate
+        // 1. Validate request & user
         var validationError = ValidateRequest(request);
         if (validationError != null)
             return ApiResponse<DbInstanceResponseDto>.Fail(validationError);
@@ -47,7 +50,17 @@ public class DockerService : IDockerService
         if (!await _authService.isUserValid(request.UserId))
             return ApiResponse<DbInstanceResponseDto>.Fail("Invalid user");
 
-        // 2. Parse engine
+        // 2. Kiểm tra plan limit trước khi tạo instance
+        try
+        {
+            await _subscriptionService.ValidatePlanLimit(request.UserId);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ApiResponse<DbInstanceResponseDto>.Fail(ex.Message);
+        }
+
+        // 3. Parse engine
         if (!TryParseEngine(request.Engine, out DbEngine engine, out string engineError))
             return ApiResponse<DbInstanceResponseDto>.Fail(engineError);
 
@@ -360,7 +373,7 @@ public class DockerService : IDockerService
             try
             {
                 var container = await _dockerClient.Containers.InspectContainerAsync(
-                    instance.Id.ToString()
+                    instance.InstanceName.ToString()
                 );
                 instance.Status = container.State.Status == "running" ? "Running" : "Stopped";
             }
@@ -371,7 +384,6 @@ public class DockerService : IDockerService
         });
         await Task.WhenAll(tasks);
 
-        // Sau đó mới save 1 lần duy nhất
         await _dbInstanceRepo.UpdateRangeAsync(dbInstance);
     }
 }

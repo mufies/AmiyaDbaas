@@ -11,4 +11,5 @@ public class User
     
     // Navigation properties
     public ICollection<DbInstance> DbInstances { get; set; } = new List<DbInstance>();
+    public ICollection<UserSubscription> UserSubscriptions { get; set; } = new List<UserSubscription>();
 }

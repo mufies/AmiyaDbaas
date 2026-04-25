@@ -1,6 +1,7 @@
 using System.Text;
 using AmiyaDbaasManager.Data;
 using AmiyaDbaasManager.Middlewares;
+using AmiyaDbaasManager.Models;
 using AmiyaDbaasManager.Repositories;
 using AmiyaDbaasManager.Repositories.Interfaces;
 using AmiyaDbaasManager.Services;
@@ -10,6 +11,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -43,14 +45,21 @@ builder
 // ─── DI Repositories & Services ───────────────────────────────────────────────
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IDbInstanceRepo, DbInstanceRepo>();
+builder.Services.AddScoped<IPlanRepository, PlanRepository>();
+builder.Services.AddScoped<IUserSubscriptionRepository, UserSubscriptionRepository>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IDockerService, DockerService>();
 builder.Services.AddScoped<IPortManagerService, PortManagerService>();
 builder.Services.AddScoped<IDbInstanceService, DbInstanceService>();
+builder.Services.AddScoped<IPlanService, PlanService>();
+builder.Services.AddScoped<IUserSubscriptionService, UserSubscriptionService>();
 builder.Services.AddHostedService<ContainerHealthCheckWorker>();
 
 // ─── Controllers & Swagger ────────────────────────────────────────────────────
-builder.Services.AddControllers();
+builder.Services.AddControllers().AddJsonOptions(options =>
+{
+    options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+});
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -96,7 +105,10 @@ app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(c =>
+    {
+        c.EnablePersistAuthorization();
+    });
 }
 
 app.UseHttpsRedirection();
@@ -111,6 +123,44 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
+
+    // ─── Seed Plans (chỉ import khi bảng rỗng) ───────────────
+    if (!db.Plans.Any())
+    {
+        db.Plans.AddRange(
+            new Plan
+            {
+                Name = "Free",
+                Description = "Gói miễn phí, phù hợp để thử nghiệm.",
+                MaxInstances = 2,
+                MaxCpuCoresPerInstance = 1,
+                MaxRamMbPerInstance = 512,
+                MaxStorageGbPerInstance = 5,
+                PriceMonthly = 0m,
+            },
+            new Plan
+            {
+                Name = "Pro",
+                Description = "Gói chuyên nghiệp cho cá nhân và nhóm nhỏ.",
+                MaxInstances = 10,
+                MaxCpuCoresPerInstance = 4,
+                MaxRamMbPerInstance = 4096,
+                MaxStorageGbPerInstance = 50,
+                PriceMonthly = 100m,
+            },
+            new Plan
+            {
+                Name = "Enterprise",
+                Description = "Gói doanh nghiệp không giới hạn tài nguyên.",
+                MaxInstances = 50,
+                MaxCpuCoresPerInstance = 8,
+                MaxRamMbPerInstance = 16384,
+                MaxStorageGbPerInstance = 500,
+                PriceMonthly = 1000m,
+            }
+        );
+        db.SaveChanges();
+    }
 }
 
 app.Run();
