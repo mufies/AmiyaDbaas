@@ -9,6 +9,7 @@ using AmiyaDbaasManager.Repositories.Interfaces;
 using AmiyaDbaasManager.Services;
 using AmiyaDbaasManager.Services.interfaces;
 using AmiyaDbaasManager.Services.Interfaces;
+using AmiyaDbaasManager.Services.Workers;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -55,7 +56,7 @@ builder
                     context.Token = accessToken;
                 }
                 return Task.CompletedTask;
-            }
+            },
         };
     });
 
@@ -64,7 +65,9 @@ builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IDbInstanceRepo, DbInstanceRepo>();
 builder.Services.AddScoped<IPlanRepository, PlanRepository>();
 builder.Services.AddScoped<IUserSubscriptionRepository, UserSubscriptionRepository>();
+builder.Services.AddScoped<IEncryptionService, EncryptionService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
+
 builder.Services.AddScoped<IDockerService, DockerService>();
 builder.Services.AddScoped<IPortManagerService, PortManagerService>();
 builder.Services.AddScoped<IDbInstanceService, DbInstanceService>();

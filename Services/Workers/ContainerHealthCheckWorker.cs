@@ -1,6 +1,6 @@
 using AmiyaDbaasManager.Services.interfaces;
 
-namespace AmiyaDbaasManager.Services
+namespace AmiyaDbaasManager.Services.Workers
 {
     public class ContainerHealthCheckWorker : BackgroundService
     {

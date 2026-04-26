@@ -22,12 +22,14 @@ public class DockerService : IDockerService
     private readonly IDbInstanceRepo _dbInstanceRepo;
     private readonly IAuthService _authService;
     private readonly IUserSubscriptionService _subscriptionService;
+    private readonly IEncryptionService _encryptionService;
 
     public DockerService(
         IPortManagerService portService,
         IDbInstanceRepo dbInstanceRepo,
         IAuthService authService,
-        IUserSubscriptionService subscriptionService
+        IUserSubscriptionService subscriptionService,
+        IEncryptionService encryptionService
     )
     {
         _dockerClient = new DockerClientConfiguration(
@@ -38,6 +40,7 @@ public class DockerService : IDockerService
         _dbInstanceRepo = dbInstanceRepo;
         _authService = authService;
         _subscriptionService = subscriptionService;
+        _encryptionService = encryptionService;
     }
 
     public async Task<ApiResponse<DbInstanceResponseDto>> createDbImage(
@@ -68,17 +71,13 @@ public class DockerService : IDockerService
 
         try
         {
-            // 3. Pull image
             await PullImageAsync(engine);
 
-            // 4. Tạo network cho tenant
             await EnsureNetworkExistsAsync(request.UserId);
 
-            // Generate password
             var bytes = RandomNumberGenerator.GetBytes(16);
             string rawPassword = Convert.ToBase64String(bytes)[..16];
 
-            // 5. Tạo và start container
             int newPort = await _portService.NewPort();
             string containerId = await CreateAndStartContainerAsync(
                 request,
@@ -87,16 +86,14 @@ public class DockerService : IDockerService
                 rawPassword
             );
 
-            // Hash password
-            string hashedPassword = BCrypt.Net.BCrypt.HashPassword(rawPassword);
+            string encryptedPassword = _encryptionService.Encrypt(rawPassword);
 
-            // 6. Lưu vào DB
             var dbInstance = await SaveDbInstanceAsync(
                 request,
                 engine,
                 newPort,
                 containerId,
-                hashedPassword
+                encryptedPassword
             );
 
             var responseDto = dbInstance.ToDto();
@@ -415,8 +412,9 @@ public class DockerService : IDockerService
 
     public async Task SendLogsToGroup(string containerId, IHubContext<InstanceLogs> hubContext)
     {
-        var stream = await _dockerClient.Containers.GetContainerLogsAsync(
+        using var stream = await _dockerClient.Containers.GetContainerLogsAsync(
             containerId,
+            false, // tty
             new ContainerLogsParameters
             {
                 ShowStdout = true,
@@ -427,14 +425,119 @@ public class DockerService : IDockerService
             CancellationToken.None
         );
 
-        using var reader = new StreamReader(stream);
-        while (!reader.EndOfStream)
+        var buffer = new byte[81920];
+        while (true)
         {
-            var line = await reader.ReadLineAsync();
-            if (line == null)
-                continue;
+            var result = await stream.ReadOutputAsync(
+                buffer,
+                0,
+                buffer.Length,
+                CancellationToken.None
+            );
+            if (result.EOF)
+                break;
 
-            await hubContext.Clients.Group(containerId).SendAsync("ReceiveLog", line);
+            string line = System.Text.Encoding.UTF8.GetString(buffer, 0, result.Count);
+            if (!string.IsNullOrWhiteSpace(line))
+            {
+                await hubContext
+                    .Clients.Group(containerId)
+                    .SendAsync("ReceiveLog", line.TrimEnd('\r', '\n'));
+            }
         }
+    }
+
+    private async Task<string> CreateExecAsync(
+        string containerId,
+        IEnumerable<string> cmd,
+        IEnumerable<string>? envVars,
+        CancellationToken ct
+    )
+    {
+        var result = await _dockerClient.Exec.ExecCreateContainerAsync(
+            containerId,
+            new ContainerExecCreateParameters
+            {
+                Cmd = cmd.ToList(),
+                AttachStdout = true,
+                AttachStderr = true,
+                Env = envVars?.ToList(),
+            },
+            ct
+        );
+
+        return result.ID;
+    }
+
+    public async Task ExecAsync(
+        string containerId,
+        IEnumerable<string> cmd,
+        IEnumerable<string>? envVars,
+        CancellationToken ct = default
+    )
+    {
+        var execId = await CreateExecAsync(containerId, cmd, envVars, ct);
+        using var stream = await _dockerClient.Exec.StartAndAttachContainerExecAsync(
+            execId,
+            false,
+            ct
+        );
+
+        var (stdout, stderr) = await stream.ReadOutputToEndAsync(ct);
+
+        if (!string.IsNullOrWhiteSpace(stderr))
+            Console.WriteLine($"{stderr}");
+    }
+
+    public async Task<Stream> GetFileStreamFromContainer(
+        string containerId,
+        string contentPath,
+        CancellationToken ct = default
+    )
+    {
+        var response = await _dockerClient.Containers.GetArchiveFromContainerAsync(
+            containerId,
+            new GetArchiveFromContainerParameters(),
+            false,
+            ct
+        );
+
+        var reader = new System.Formats.Tar.TarReader(response.Stream);
+        var entry = await reader.GetNextEntryAsync();
+
+        if (entry?.DataStream is null)
+            throw new Exception($"Không đọc được file từ container: {contentPath}");
+
+        return entry.DataStream;
+    }
+
+    public async Task CopyToContainer(
+        string containerId,
+        Stream fileStream,
+        string contentPath,
+        CancellationToken ct = default
+    )
+    {
+        var filename = Path.GetFileName(contentPath);
+        var dir = Path.GetDirectoryName(contentPath);
+
+        using var tarMemStream = new MemoryStream();
+        using (var tarWriter = new System.Formats.Tar.TarWriter(tarMemStream, leaveOpen: true))
+        {
+            var entry = new System.Formats.Tar.PaxTarEntry(
+                System.Formats.Tar.TarEntryType.RegularFile,
+                filename
+            );
+            entry.DataStream = fileStream;
+            tarWriter.WriteEntry(entry);
+        }
+        tarMemStream.Seek(0, SeekOrigin.Begin);
+
+        await _dockerClient.Containers.ExtractArchiveToContainerAsync(
+            containerId,
+            new ContainerPathStatParameters { Path = dir },
+            tarMemStream,
+            ct
+        );
     }
 }

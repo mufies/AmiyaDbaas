@@ -1,6 +1,6 @@
 using AmiyaDbaasManager.Services.Interfaces;
 
-namespace AmiyaDbaasManager.Services
+namespace AmiyaDbaasManager.Services.Workers
 {
     public class UserSubscriptionCheckWorker : BackgroundService
     {

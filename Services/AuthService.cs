@@ -24,11 +24,9 @@ public class AuthService : IAuthService
 
     public async Task<UserResponseDto> RegisterAsync(RegisterRequestDto request)
     {
-        // Kiểm tra email đã tồn tại chưa
         if (await _userRepository.ExistsByEmailAsync(request.Email))
             throw new ConflictException($"Email '{request.Email}' đã được sử dụng.");
 
-        // Kiểm tra username đã tồn tại chưa
         if (await _userRepository.ExistsByUsernameAsync(request.Username))
             throw new ConflictException($"Username '{request.Username}' đã được sử dụng.");
 

@@ -28,7 +28,6 @@ public class PlanService : IPlanService
         var existing = await _planRepository.GetById(planId);
         if (existing is null) return null;
 
-        // Chỉ cập nhật các trường được phép thay đổi
         existing.Name = updatedData.Name;
         existing.Description = updatedData.Description;
         existing.MaxInstances = updatedData.MaxInstances;
