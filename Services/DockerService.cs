@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Threading.Tasks;
 using AmiyaDbaasManager.DTOs.Request.DbInstance;
 using AmiyaDbaasManager.DTOs.Response;
 using AmiyaDbaasManager.DTOs.Response.DbInstance;
@@ -7,7 +8,6 @@ using AmiyaDbaasManager.Hubs;
 using AmiyaDbaasManager.Mappers;
 using AmiyaDbaasManager.Models;
 using AmiyaDbaasManager.Repositories.Interfaces;
-using AmiyaDbaasManager.Services.interfaces;
 using AmiyaDbaasManager.Services.Interfaces;
 using Docker.DotNet;
 using Docker.DotNet.Models;
@@ -489,9 +489,10 @@ public class DockerService : IDockerService
             Console.WriteLine($"{stderr}");
     }
 
-    public async Task<Stream> GetFileStreamFromContainer(
+    public async Task GetFileStreamFromContainer(
         string containerId,
         string contentPath,
+        Func<Stream, long, Task> action,
         CancellationToken ct = default
     )
     {
@@ -508,7 +509,7 @@ public class DockerService : IDockerService
         if (entry?.DataStream is null)
             throw new Exception($"Không đọc được file từ container: {contentPath}");
 
-        return entry.DataStream;
+        await action(entry.DataStream, entry.Length);
     }
 
     public async Task CopyToContainer(
@@ -521,23 +522,34 @@ public class DockerService : IDockerService
         var filename = Path.GetFileName(contentPath);
         var dir = Path.GetDirectoryName(contentPath);
 
-        using var tarMemStream = new MemoryStream();
-        using (var tarWriter = new System.Formats.Tar.TarWriter(tarMemStream, leaveOpen: true))
-        {
-            var entry = new System.Formats.Tar.PaxTarEntry(
-                System.Formats.Tar.TarEntryType.RegularFile,
-                filename
-            );
-            entry.DataStream = fileStream;
-            tarWriter.WriteEntry(entry);
-        }
-        tarMemStream.Seek(0, SeekOrigin.Begin);
+        var pipe = new System.IO.Pipelines.Pipe();
 
-        await _dockerClient.Containers.ExtractArchiveToContainerAsync(
+        var writeTask = Task.Run(async () =>
+        {
+            using (
+                var tarWriter = new System.Formats.Tar.TarWriter(
+                    pipe.Writer.AsStream(),
+                    leaveOpen: false
+                )
+            )
+            {
+                var entry = new System.Formats.Tar.PaxTarEntry(
+                    System.Formats.Tar.TarEntryType.RegularFile,
+                    filename
+                );
+                entry.DataStream = fileStream;
+                tarWriter.WriteEntry(entry);
+                await pipe.Writer.CompleteAsync();
+            }
+        });
+
+        var readTask = _dockerClient.Containers.ExtractArchiveToContainerAsync(
             containerId,
             new ContainerPathStatParameters { Path = dir },
-            tarMemStream,
+            pipe.Reader.AsStream(),
             ct
         );
+
+        await Task.WhenAll(writeTask, readTask);
     }
 }

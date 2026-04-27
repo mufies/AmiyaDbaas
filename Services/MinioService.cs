@@ -1,57 +1,67 @@
-// using Minio;
-// using Minio.DataModel;
-//
-// namespace AmiyaDbaasManager.Services
-// {
-//     public class MinioService
-//     {
-//         private readonly IMinioClient _minioClient;
-//         private readonly string _bucketName;
-//
-//         public MinioService(IMinioClient minioClient, IConfiguration configuration)
-//         {
-//             _minioClient = minioClient;
-//             _bucketName = configuration["Minio:Bucket"];
-//         }
-//         // ─── Upload ─────────────────────────────────────────────────────────────
-//         public async Task UploadAsync(string objectName, string filePath)
-//         {
-//             await _minioClient.PutObjectAsync(_bucketName, objectName, filePath);
-//         }
-//
-//         // ─── Download ────────────────────────────────────────────────────────────
-//         public async Task DownloadAsync(string objectName, string filePath)
-//         {
-//             await _minioClient.GetObjectAsync(_bucketName, objectName, stream =>
-//             {
-//                 using var fileStream = File.Create(filePath);
-//                 stream.CopyTo(fileStream);
-//             });
-//         }
-//
-//         // ─── Check Exists ────────────────────────────────────────────────────────
-//         public async Task<bool> CheckExistsAsync(string objectName)
-//         {
-//             try
-//             {
-//                 await _minioClient.StatObjectAsync(_bucketName, objectName);
-//                 return true;
-//             }
-//             catch (Exception)
-//             {
-//                 return false;
-//             }
-//         }
-//
-//         // ─── List ────────────────────────────────────────────────────────────────
-//         public async Task<List<string>> ListAsync()
-//         {
-//             var objects = new List<string>();
-//             await foreach (var obj in _minioClient.ListObjectsAsync(_bucketName))
-//             {
-//                 objects.Add(obj.Key);
-//             }
-//             return objects;
-//         }
-//     }
-// }
+using AmiyaDbaasManager.Services.Interfaces;
+using Minio;
+using Minio.DataModel;
+using Minio.DataModel.Args;
+
+namespace AmiyaDbaasManager.Services
+{
+    public class MinioService : IMinioService
+    {
+        private readonly IMinioClient _minioClient;
+        private readonly string _bucketName;
+
+        public MinioService(IMinioClient minioClient, IConfiguration configuration)
+        {
+            _minioClient = minioClient;
+            _bucketName = configuration["Minio:BucketName"];
+        }
+
+        public async Task EnsureBucketExistsAsync()
+        {
+            var exists = await _minioClient.BucketExistsAsync(
+                new BucketExistsArgs().WithBucket(_bucketName)
+            );
+
+            if (!exists)
+            {
+                await _minioClient.MakeBucketAsync(new MakeBucketArgs().WithBucket(_bucketName));
+            }
+        }
+
+        public async Task UploadStreamFileToMinio(
+            Stream file,
+            long length,
+            string filePath,
+            CancellationToken ct = default
+        )
+        {
+            await _minioClient.PutObjectAsync(
+                new PutObjectArgs()
+                    .WithBucket(_bucketName)
+                    .WithObject(filePath)
+                    .WithStreamData(file)
+                    .WithObjectSize(length)
+                    .WithContentType("application/otect-stream"),
+                ct
+            );
+        }
+
+        public async Task GetStreamFileFromMinio(
+            string filePath,
+            Func<Stream, Task> act,
+            CancellationToken ct = default
+        )
+        {
+            await _minioClient.GetObjectAsync(
+                new GetObjectArgs()
+                    .WithBucket(_bucketName)
+                    .WithObject(filePath)
+                    .WithCallbackStream(async stream =>
+                    {
+                        await act(stream);
+                    }),
+                ct
+            );
+        }
+    }
+}

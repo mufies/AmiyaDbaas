@@ -57,7 +57,7 @@ namespace AmiyaDbaasManager.Hubs
                     {
                         using var scope = _serviceProvider.CreateScope();
                         var dockerService =
-                            scope.ServiceProvider.GetRequiredService<AmiyaDbaasManager.Services.interfaces.IDockerService>();
+                            scope.ServiceProvider.GetRequiredService<AmiyaDbaasManager.Services.Interfaces.IDockerService>();
                         var hubContext = scope.ServiceProvider.GetRequiredService<
                             IHubContext<InstanceLogs>
                         >();

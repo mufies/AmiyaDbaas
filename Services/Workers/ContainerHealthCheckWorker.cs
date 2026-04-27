@@ -1,4 +1,4 @@
-using AmiyaDbaasManager.Services.interfaces;
+using AmiyaDbaasManager.Services.Interfaces;
 
 namespace AmiyaDbaasManager.Services.Workers
 {

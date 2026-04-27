@@ -2,7 +2,7 @@ using System.Security.Claims;
 using AmiyaDbaasManager.DTOs.Request.DbInstance;
 using AmiyaDbaasManager.DTOs.Response;
 using AmiyaDbaasManager.DTOs.Response.DbInstance;
-using AmiyaDbaasManager.Services.interfaces;
+using AmiyaDbaasManager.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 

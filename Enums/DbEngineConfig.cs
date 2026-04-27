@@ -48,21 +48,6 @@ public static class DbEngineConfig
         public const string dbName = "defaultDb";
     }
 
-    // ─── Container file paths ───────────────────────────────────────────────────
-    public static class ContainerFilePath
-    {
-        public static string MySQL(string instanceName, string date) =>
-            $"/tempfiles/mysql/{instanceName}_{date}/backup_{date}.sql";
-
-        public static string PostgreSQL(string instanceName, string date) =>
-            $"/tempfiles/postgresql/{instanceName}_{date}/backup_{date}.sql";
-
-        public static string MSSQL(string instanceName, string date) =>
-            $"/tempfiles/mssql/{instanceName}_{date}/backup_{date}.sql";
-
-        public static string MongoDB(string instanceName, string date) =>
-            $"/tempfiles/mongodb/{instanceName}_{date}/backup_{date}.sql";
-    }
 
     // ─── Helper methods ──────────────────────────────────────────────────────────
 

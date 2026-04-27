@@ -7,13 +7,13 @@ using AmiyaDbaasManager.Models;
 using AmiyaDbaasManager.Repositories;
 using AmiyaDbaasManager.Repositories.Interfaces;
 using AmiyaDbaasManager.Services;
-using AmiyaDbaasManager.Services.interfaces;
 using AmiyaDbaasManager.Services.Interfaces;
 using AmiyaDbaasManager.Services.Workers;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Minio;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -76,6 +76,19 @@ builder.Services.AddScoped<IUserSubscriptionService, UserSubscriptionService>();
 builder.Services.AddHostedService<ContainerHealthCheckWorker>();
 builder.Services.AddHostedService<UserSubscriptionCheckWorker>();
 builder.Services.AddSignalR();
+builder.Services.AddMinio(config =>
+{
+    config
+        .WithEndpoint("localhost", 9000)
+        .WithCredentials(
+            builder.Configuration["Minio:AccessKey"],
+            builder.Configuration["Minio:SecretKey"]
+        )
+        .WithSSL(false)
+        .Build();
+});
+
+builder.Services.AddScoped<IMinioService, MinioService>();
 
 // ─── Controllers & Swagger ────────────────────────────────────────────────────
 builder
@@ -185,6 +198,11 @@ using (var scope = app.Services.CreateScope())
         );
         db.SaveChanges();
     }
+}
+using (var scope = app.Services.CreateScope())
+{
+    var minio = scope.ServiceProvider.GetRequiredService<IMinioService>();
+    await minio.EnsureBucketExistsAsync();
 }
 
 app.Run();

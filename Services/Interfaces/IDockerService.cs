@@ -2,7 +2,7 @@ using AmiyaDbaasManager.DTOs.Request.DbInstance;
 using AmiyaDbaasManager.DTOs.Response;
 using AmiyaDbaasManager.DTOs.Response.DbInstance;
 
-namespace AmiyaDbaasManager.Services.interfaces;
+namespace AmiyaDbaasManager.Services.Interfaces;
 
 public interface IDockerService
 {
@@ -21,9 +21,10 @@ public interface IDockerService
         IEnumerable<string>? envVars,
         CancellationToken ct = default
     );
-    Task<Stream> GetFileStreamFromContainer(
+    Task GetFileStreamFromContainer(
         string containerId,
         string contentPath,
+        Func<Stream, long, Task> action,
         CancellationToken ct = default
     );
     Task CopyToContainer(
