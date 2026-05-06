@@ -484,6 +484,9 @@ public class DockerService : IDockerService
         );
 
         var (stdout, stderr) = await stream.ReadOutputToEndAsync(ct);
+        var inspectResult = await _dockerClient.Exec.InspectContainerExecAsync(execId, ct);
+        if (inspectResult.ExitCode != 0)
+            throw new Exception($"Lệnh thất bại (exit code {inspectResult.ExitCode}): {stderr}");
 
         if (!string.IsNullOrWhiteSpace(stderr))
             Console.WriteLine($"{stderr}");
@@ -491,14 +494,14 @@ public class DockerService : IDockerService
 
     public async Task GetFileStreamFromContainer(
         string containerId,
-        string contentPath,
+        string containerPath,
         Func<Stream, long, Task> action,
         CancellationToken ct = default
     )
     {
         var response = await _dockerClient.Containers.GetArchiveFromContainerAsync(
             containerId,
-            new GetArchiveFromContainerParameters(),
+            new GetArchiveFromContainerParameters { Path = containerPath },
             false,
             ct
         );
@@ -507,7 +510,7 @@ public class DockerService : IDockerService
         var entry = await reader.GetNextEntryAsync();
 
         if (entry?.DataStream is null)
-            throw new Exception($"Không đọc được file từ container: {contentPath}");
+            throw new Exception($"Không đọc được file từ container: {containerPath}");
 
         await action(entry.DataStream, entry.Length);
     }
@@ -515,31 +518,39 @@ public class DockerService : IDockerService
     public async Task CopyToContainer(
         string containerId,
         Stream fileStream,
-        string contentPath,
+        string containerPath,
         CancellationToken ct = default
     )
     {
-        var filename = Path.GetFileName(contentPath);
-        var dir = Path.GetDirectoryName(contentPath);
+        var filename = Path.GetFileName(containerPath);
+        var dir = Path.GetDirectoryName(containerPath);
 
         var pipe = new System.IO.Pipelines.Pipe();
 
         var writeTask = Task.Run(async () =>
         {
-            using (
-                var tarWriter = new System.Formats.Tar.TarWriter(
-                    pipe.Writer.AsStream(),
-                    leaveOpen: false
-                )
-            )
+            try
             {
-                var entry = new System.Formats.Tar.PaxTarEntry(
-                    System.Formats.Tar.TarEntryType.RegularFile,
-                    filename
-                );
-                entry.DataStream = fileStream;
-                tarWriter.WriteEntry(entry);
+                using (
+                    var tarWriter = new System.Formats.Tar.TarWriter(
+                        pipe.Writer.AsStream(),
+                        leaveOpen: true
+                    )
+                )
+                {
+                    var entry = new System.Formats.Tar.PaxTarEntry(
+                        System.Formats.Tar.TarEntryType.RegularFile,
+                        filename
+                    );
+                    entry.DataStream = fileStream;
+                    tarWriter.WriteEntry(entry);
+                }
                 await pipe.Writer.CompleteAsync();
+            }
+            catch (Exception e)
+            {
+                await pipe.Writer.CompleteAsync(e); // báo lỗi cho reader biết
+                throw;
             }
         });
 

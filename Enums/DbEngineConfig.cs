@@ -42,12 +42,24 @@ public static class DbEngineConfig
         public const string MongoDB = "admin";
     }
 
-    // ─── Default DB name  ────────────────────────────────────────────
+    // ─── Default DB name (per engine) ───────────────────────────────────────────
     public static class DefaultDatabase
     {
-        public const string dbName = "defaultDb";
-    }
+        public const string MySQL = "defaultDb";
+        public const string PostgreSQL = "admin"; // PostgreSQL tạo DB trùng tên POSTGRES_USER
+        public const string MSSQL = "defaultDb";
+        public const string MongoDB = "defaultDb";
 
+        public static string Get(DbEngine engine) =>
+            engine switch
+            {
+                DbEngine.MySQL => MySQL,
+                DbEngine.PostgreSQL => PostgreSQL,
+                DbEngine.MSSQL => MSSQL,
+                DbEngine.MongoDB => MongoDB,
+                _ => throw new ArgumentOutOfRangeException(nameof(engine)),
+            };
+    }
 
     // ─── Helper methods ──────────────────────────────────────────────────────────
 
@@ -104,20 +116,20 @@ public static class DbEngineConfig
                 $"MYSQL_ROOT_PASSWORD={password}",
                 $"MYSQL_USER={DefaultUser.MySQL}",
                 $"MYSQL_PASSWORD={password}",
-                $"MYSQL_DATABASE={DefaultDatabase.dbName}",
+                $"MYSQL_DATABASE={DefaultDatabase.MySQL}",
             },
             DbEngine.PostgreSQL => new List<string>
             {
                 $"POSTGRES_PASSWORD={password}",
                 $"POSTGRES_USER={DefaultUser.PostgreSQL}",
-                $"POSTGRES_DB={DefaultDatabase.dbName}",
+                $"POSTGRES_DB={DefaultDatabase.PostgreSQL}",
             },
             DbEngine.MSSQL => new List<string> { $"SA_PASSWORD={password}", $"ACCEPT_EULA=Y" },
             DbEngine.MongoDB => new List<string>
             {
                 $"MONGO_INITDB_ROOT_USERNAME={DefaultUser.MongoDB}",
                 $"MONGO_INITDB_ROOT_PASSWORD={password}",
-                $"MONGO_INITDB_DATABASE={DefaultDatabase.dbName}",
+                $"MONGO_INITDB_DATABASE={DefaultDatabase.MongoDB}",
             },
             _ => throw new ArgumentOutOfRangeException(nameof(engine)),
         };
@@ -132,13 +144,13 @@ public static class DbEngineConfig
         engine switch
         {
             DbEngine.MySQL =>
-                $"Server={host};Port={port};User Id={DefaultUser.MySQL};Password={password};Database={DefaultDatabase.dbName}",
+                $"Server={host};Port={port};User Id={DefaultUser.MySQL};Password={password};Database={DefaultDatabase.MySQL}",
             DbEngine.PostgreSQL =>
-                $"Host={host};Port={port};Username={DefaultUser.PostgreSQL};Password={password};Database={DefaultDatabase.dbName}",
+                $"Host={host};Port={port};Username={DefaultUser.PostgreSQL};Password={password};Database={DefaultDatabase.PostgreSQL}",
             DbEngine.MSSQL =>
-                $"Server={host},{port};User Id={DefaultUser.MSSQL};Password={password};Database={DefaultDatabase.dbName};",
+                $"Server={host},{port};User Id={DefaultUser.MSSQL};Password={password};Database={DefaultDatabase.MSSQL};",
             DbEngine.MongoDB =>
-                $"mongodb://{DefaultUser.MongoDB}:{password}@{host}:{port}/{DefaultDatabase.dbName}",
+                $"mongodb://{DefaultUser.MongoDB}:{password}@{host}:{port}/{DefaultDatabase.MongoDB}",
             _ => throw new ArgumentOutOfRangeException(nameof(engine)),
         };
 }

@@ -4,7 +4,14 @@ namespace AmiyaDbaasManager.Services.Interfaces
 {
     public interface IBackupService
     {
-        Task CreateBackupForInstanceAsync(CreateBackupRequest request);
-        Task RestoreBackupForInstanceAsync(string instanceId, string filePath);
+        /// <summary>
+        /// Tạo backup từ container và upload lên MinIO.
+        /// </summary>
+        Task CreateBackupForInstanceAsync(CreateBackupRequest request, Guid userId, CancellationToken ct = default);
+
+        /// <summary>
+        /// Restore backup từ MinIO vào container.
+        /// </summary>
+        Task RestoreBackupForInstanceAsync(Guid dbInstanceId, string backupObjectPath, Guid userId, CancellationToken ct = default);
     }
 }

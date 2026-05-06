@@ -12,6 +12,22 @@ services:
     volumes:
       - amiya_pgdata:/var/lib/postgresql/data
 
+  minio:
+    image: minio/minio:latest
+    container_name: amiya_minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: admin         # khớp Minio:AccessKey trong appsettings
+      MINIO_ROOT_PASSWORD: password123  # khớp Minio:SecretKey trong appsettings
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"   # S3 API  — MinioService dùng cổng này
+      - "9001:9001"   # Web UI  — truy cập http://localhost:9001
+    volumes:
+      - amiya_minio_data:/data
+
 volumes:
   amiya_pgdata:
+    driver: local
+  amiya_minio_data:
     driver: local

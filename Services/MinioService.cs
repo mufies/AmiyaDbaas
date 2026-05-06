@@ -2,6 +2,7 @@ using AmiyaDbaasManager.Services.Interfaces;
 using Minio;
 using Minio.DataModel;
 using Minio.DataModel.Args;
+using AmiyaDbaasManager.DTOs.Response;
 
 namespace AmiyaDbaasManager.Services
 {
@@ -62,6 +63,35 @@ namespace AmiyaDbaasManager.Services
                     }),
                 ct
             );
+        }
+
+        public async Task<List<BackupResponseDto>> ListBackupsAsync(
+            Guid userId,
+            Guid? instanceId = null,
+            CancellationToken ct = default
+        )
+        {
+            var prefix = instanceId.HasValue
+                ? $"backups/{userId}/{instanceId}/"
+                : $"backups/{userId}/";
+
+            var files = new List<BackupResponseDto>();
+
+            var args = new ListObjectsArgs()
+                .WithBucket(_bucketName)
+                .WithPrefix(prefix)
+                .WithRecursive(true);
+
+            await foreach (var item in _minioClient.ListObjectsEnumAsync(args, ct))
+            {
+                files.Add(new BackupResponseDto
+                {
+                    BackupPath = item.Key,
+                    FileName = Path.GetFileName(item.Key)
+                });
+            }
+
+            return files;
         }
     }
 }
