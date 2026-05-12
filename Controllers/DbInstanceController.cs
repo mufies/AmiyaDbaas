@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using AmiyaDbaasManager.DTOs.Request.DbInstance;
 using AmiyaDbaasManager.DTOs.Response;
 using AmiyaDbaasManager.DTOs.Response.DbInstance;
 using AmiyaDbaasManager.Services.Interfaces;
@@ -13,10 +14,12 @@ namespace AmiyaDbaasManager.Controllers;
 public class DbInstanceController : ControllerBase
 {
     private readonly IDbInstanceService _dbInstanceService;
+    private readonly IQueryRunService _queryRunService;
 
-    public DbInstanceController(IDbInstanceService dbInstanceService)
+    public DbInstanceController(IDbInstanceService dbInstanceService, IQueryRunService queryRunService)
     {
         _dbInstanceService = dbInstanceService;
+        _queryRunService = queryRunService;
     }
 
     [HttpGet]
@@ -59,5 +62,26 @@ public class DbInstanceController : ControllerBase
             return NotFound(ApiResponse<object>.Fail($"Không tìm thấy instance với ID: {instanceId}"));
             
         return Ok(ApiResponse<DbInstanceResponseDto>.Ok(result, "Cập nhật trạng thái thành công"));
+    }
+
+    [HttpPost("execute-query")]
+    [ProducesResponseType(typeof(ApiResponse<QueryResponseDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiResponse<object>), StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> ExecuteQuery([FromBody] CreateQueryRequestDto request)
+    {
+        var userIdString = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!Guid.TryParse(userIdString, out var userId))
+            return Unauthorized(ApiResponse<object>.Fail("Unauthorized"));
+
+        // Cập nhật UserId từ token để bảo mật, không tin tưởng body request
+        request.UserId = userId;
+
+        var result = await _queryRunService.RunQueryAsync(request);
+        if (!result.IsSuccess)
+        {
+            return BadRequest(ApiResponse<object>.Fail(result.ErrorMessage ?? "Thực thi truy vấn thất bại"));
+        }
+
+        return Ok(ApiResponse<QueryResponseDto>.Ok(result, "Thực thi truy vấn thành công"));
     }
 }

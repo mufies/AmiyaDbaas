@@ -74,6 +74,7 @@ builder.Services.AddScoped<IDbInstanceService, DbInstanceService>();
 builder.Services.AddScoped<IPlanService, PlanService>();
 builder.Services.AddScoped<IUserSubscriptionService, UserSubscriptionService>();
 builder.Services.AddScoped<IBackupService, BackupService>();
+builder.Services.AddScoped<IQueryRunService, SqlQueryRunService>();
 builder.Services.AddHostedService<ContainerHealthCheckWorker>();
 builder.Services.AddHostedService<UserSubscriptionCheckWorker>();
 builder.Services.AddSignalR();
