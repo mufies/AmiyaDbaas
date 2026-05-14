@@ -1,0 +1,4 @@
+tls:
+  certificates:
+    - certFile: /certs/kiseki.id.vn.crt
+      keyFile:  /certs/kiseki.id.vn.key

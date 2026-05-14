@@ -44,7 +44,6 @@ public class SqlQueryRunService : IQueryRunService
                 throw new Exception("Instance not found.");
             }
 
-            // Check ownership
             if (instance.UserId != request.UserId)
             {
                 throw new Exception("You don't have permission to query this instance.");
@@ -55,34 +54,28 @@ public class SqlQueryRunService : IQueryRunService
                 throw new Exception("Instance is not running.");
             }
 
-            // Xử lý riêng cho MongoDB
             if (instance.Engine.Equals("MongoDB", StringComparison.OrdinalIgnoreCase) || 
                 instance.Engine.Equals("Mongo", StringComparison.OrdinalIgnoreCase))
             {
                 return await RunMongoQueryAsync(instance, request.Query, stopwatch);
             }
 
-            // 1. Tạo connection dựa trên Engine (SQL)
             using DbConnection connection = CreateConnection(instance);
             await connection.OpenAsync();
 
-            // 2. Tạo command và thiết lập Timeout (Rất quan trọng)
             using DbCommand command = connection.CreateCommand();
             command.CommandText = request.Query;
             command.CommandTimeout = 15; // Giới hạn 15 giây
 
-            // 3. Phân biệt loại câu lệnh
             if (IsSelectQuery(request.Query))
             {
                 using DbDataReader reader = await command.ExecuteReaderAsync();
                 
-                // Lấy danh sách tên cột
                 for (int i = 0; i < reader.FieldCount; i++)
                 {
                     response.Columns.Add(reader.GetName(i));
                 }
 
-                // Đọc dữ liệu (giới hạn số dòng để tránh OOM)
                 int maxRows = 1000;
                 int rowCount = 0;
                 
@@ -100,7 +93,6 @@ public class SqlQueryRunService : IQueryRunService
             }
             else
             {
-                // Thực thi các lệnh không trả về bảng (INSERT, UPDATE, DELETE, CREATE...)
                 response.RowsAffected = await command.ExecuteNonQueryAsync();
             }
 
@@ -124,10 +116,8 @@ public class SqlQueryRunService : IQueryRunService
     {
         var engineEnum = DbEngineConfig.ParseEngine(instance.Engine);
         
-        // Giải mã password trước khi build chuỗi kết nối
         var plainTextPassword = _encryptionService.Decrypt(instance.Password);
 
-        // Use DbEngineConfig to build connection string
         var connectionString = DbEngineConfig.BuildConnectionString(
             engineEnum,
             instance.Host,
@@ -158,7 +148,6 @@ public class SqlQueryRunService : IQueryRunService
         {
             var engineEnum = DbEngineConfig.ParseEngine(instance.Engine);
             
-            // Giải mã password
             var plainTextPassword = _encryptionService.Decrypt(instance.Password);
             
             var connectionString = DbEngineConfig.BuildConnectionString(
@@ -172,19 +161,15 @@ public class SqlQueryRunService : IQueryRunService
             var dbName = DbEngineConfig.DefaultDatabase.MongoDB;
             var database = client.GetDatabase(dbName);
 
-            // Parse raw query (JSON) to BsonDocument
-            // VD: { "find": "users", "filter": { "status": "active" } }
             var command = BsonDocument.Parse(query);
 
             var result = await database.RunCommandAsync<BsonDocument>(new BsonDocumentCommand<BsonDocument>(command));
 
-            // Nếu kết quả trả về có chứa 'cursor' (kết quả của lệnh find)
             if (result.Contains("cursor") && result["cursor"].IsBsonDocument && result["cursor"].AsBsonDocument.Contains("firstBatch"))
             {
                 var batch = result["cursor"]["firstBatch"].AsBsonArray;
                 var columnsSet = new HashSet<string>();
 
-                // Quét qua các documents để lấy tên tất cả các field làm Column name
                 foreach (var item in batch)
                 {
                     if (item.IsBsonDocument)
@@ -198,7 +183,6 @@ public class SqlQueryRunService : IQueryRunService
 
                 response.Columns = columnsSet.ToList();
 
-                // Lấy dữ liệu từng Row
                 foreach (var item in batch)
                 {
                     if (item.IsBsonDocument)
@@ -222,7 +206,6 @@ public class SqlQueryRunService : IQueryRunService
             }
             else
             {
-                // Nếu không phải cursor (VD: response của lệnh insert/update), trả về chuỗi JSON kết quả
                 response.Columns.Add("CommandResult");
                 response.Rows.Add(new Dictionary<string, object> { { "CommandResult", result.ToJson() } });
             }
@@ -254,7 +237,6 @@ public class SqlQueryRunService : IQueryRunService
         if (value.IsObjectId) return value.AsObjectId.ToString();
         if (value.IsBsonDateTime) return value.ToUniversalTime();
 
-        // Object phức tạp (array, sub-document) sẽ gom lại thành chuỗi JSON
         return value.ToJson();
     }
 }

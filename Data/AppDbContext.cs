@@ -11,6 +11,7 @@ public class AppDbContext : DbContext
     public DbSet<DbInstance> DbInstances => Set<DbInstance>();
     public DbSet<Plan> Plans => Set<Plan>();
     public DbSet<UserSubscription> UserSubscriptions => Set<UserSubscription>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -64,6 +65,21 @@ public class AppDbContext : DbContext
             // Chỉ 1 subscription active tại 1 thời điểm mỗi user
             entity.HasIndex(s => new { s.UserId, s.IsActive })
                 .HasFilter("\"IsActive\" = true");
+        });
+
+        // ── AuditLog ──────────────────────────────────────────
+        modelBuilder.Entity<AuditLog>(entity =>
+        {
+            entity.HasKey(a => a.Id);
+            entity.Property(a => a.Action).IsRequired().HasMaxLength(50);
+            entity.Property(a => a.EntityType).IsRequired().HasMaxLength(50);
+            entity.Property(a => a.InstanceId).IsRequired().HasMaxLength(100);
+            entity.Property(a => a.IpAddress).HasMaxLength(45);
+            
+            entity.HasOne(a => a.User)
+                .WithMany(u => u.AuditLogs)
+                .HasForeignKey(a => a.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

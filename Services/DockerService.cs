@@ -78,12 +78,18 @@ public class DockerService : IDockerService
             var bytes = RandomNumberGenerator.GetBytes(16);
             string rawPassword = Convert.ToBase64String(bytes)[..16];
 
-            int newPort = await _portService.NewPort();
+            // Slug phải unique theo từng instance (userId + instanceName)
+            string traefikSlug = $"db-{request.UserId}-{request.InstanceName}"
+                .ToLower()
+                .Replace("_", "-")
+                .Replace(" ", "-");
+            string hostname = $"{traefikSlug}.kiseki.id.vn";
             string containerId = await CreateAndStartContainerAsync(
                 request,
                 engine,
-                newPort,
-                rawPassword
+                rawPassword,
+                traefikSlug,
+                hostname
             );
 
             string encryptedPassword = _encryptionService.Encrypt(rawPassword);
@@ -91,20 +97,22 @@ public class DockerService : IDockerService
             var dbInstance = await SaveDbInstanceAsync(
                 request,
                 engine,
-                newPort,
                 containerId,
-                encryptedPassword
+                encryptedPassword,
+                hostname
             );
 
             var responseDto = dbInstance.ToDto();
             responseDto.Password = rawPassword;
-            responseDto.ConnectionString = DbEngineConfig.BuildConnectionString(
-                engine,
-                dbInstance.Host,
-                dbInstance.AllocatedPort,
-                rawPassword
-            );
 
+            // Port hướng về Traefik entrypoint tương ứng với engine
+            int traefikPort = DbEngineConfig.GetTraefikEntrypointPort(engine);
+            string connectionString = DbEngineConfig.BuildConnectionString(engine, hostname, traefikPort, rawPassword);
+            if (engine == DbEngine.PostgreSQL)
+            {
+                connectionString += ";SSL Mode=Require;";
+            }
+            responseDto.ConnectionString = connectionString;
             return ApiResponse<DbInstanceResponseDto>.Ok(responseDto, "Tao db thanh cong");
         }
         catch (Exception e)
@@ -153,15 +161,16 @@ public class DockerService : IDockerService
     private async Task<string> CreateAndStartContainerAsync(
         CreateDbInstanceRequestDto request,
         DbEngine engine,
-        int newPort,
-        string rawPassword
+        string rawPassword,
+        string traefikSlug,
+        string hostname
     )
     {
         string imageName = DbEngineConfig.GetImageName(engine);
         string imageTag = DbEngineConfig.GetImageTag(engine);
         string containerPort = DbEngineConfig.GetContainerPort(engine);
         string networkName = $"network_tenant_{request.UserId}";
-
+        string entrypoint = DbEngineConfig.GetTraefikEntrypointName(engine);
         var createParam = new CreateContainerParameters
         {
             Name = $"tenant_{request.UserId}_{Guid.NewGuid()}",
@@ -170,21 +179,24 @@ public class DockerService : IDockerService
             HostConfig = new HostConfig
             {
                 Memory = request.RamMb * 1024L * 1024L,
-                PortBindings = new Dictionary<string, IList<PortBinding>>
-                {
-                    {
-                        containerPort,
-                        new List<PortBinding> { new PortBinding { HostPort = newPort.ToString() } }
-                    },
-                },
+                NanoCPUs = request.CpuCores * 1_000_000_000L,
             },
             NetworkingConfig = new NetworkingConfig
             {
                 EndpointsConfig = new Dictionary<string, EndpointSettings>
                 {
                     { networkName, new EndpointSettings() },
+            { "ingress-net", new EndpointSettings() }, 
                 },
             },
+            Labels = new Dictionary<string, string>
+                {
+                    ["traefik.enable"] = "true",
+                    ["traefik.tcp.routers." + traefikSlug + ".rule"] = $"HostSNI(`{hostname}`)",
+                    ["traefik.tcp.routers." + traefikSlug + ".entrypoints"] = entrypoint,
+                    ["traefik.tcp.routers." + traefikSlug + ".tls"] = "true",
+                    ["traefik.tcp.services." + traefikSlug + ".loadbalancer.server.port"] = containerPort.Replace("/tcp", ""),
+                }
         };
 
         var response = await _dockerClient.Containers.CreateContainerAsync(createParam);
@@ -198,11 +210,12 @@ public class DockerService : IDockerService
     private async Task<DbInstance> SaveDbInstanceAsync(
         CreateDbInstanceRequestDto request,
         DbEngine engine,
-        int newPort,
         string containerId,
-        string hashedPassword
+        string hashedPassword,
+        string hostname
     )
     {
+        int traefikPort = DbEngineConfig.GetTraefikEntrypointPort(engine);
         var dbInstance = new DbInstance
         {
             Id = Guid.NewGuid(),
@@ -214,8 +227,8 @@ public class DockerService : IDockerService
             CpuCores = request.CpuCores,
             RamMb = request.RamMb,
             StorageGb = request.StorageGb,
-            AllocatedPort = newPort,
-            Host = request.Host,
+            AllocatedPort = traefikPort,
+            Host = hostname, // lưu hostname Traefik thực tế, không phải từ request
             Password = hashedPassword,
             CreatedAt = DateTime.UtcNow,
             UserId = request.UserId,

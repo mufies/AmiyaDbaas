@@ -107,6 +107,32 @@ public static class DbEngineConfig
             _ => throw new ArgumentOutOfRangeException(nameof(engine)),
         };
 
+    /// <summary>
+    /// Tên entrypoint Traefik tương ứng với từng engine (khai báo trong docker-compose).
+    /// </summary>
+    public static string GetTraefikEntrypointName(DbEngine engine) =>
+        engine switch
+        {
+            DbEngine.MySQL    => "mysql",
+            DbEngine.PostgreSQL => "postgres",
+            DbEngine.MSSQL    => "mssql",
+            DbEngine.MongoDB  => "mongodb",
+            _ => throw new ArgumentOutOfRangeException(nameof(engine)),
+        };
+
+    /// <summary>
+    /// Port public của Traefik entrypoint tương ứng với từng engine.
+    /// </summary>
+    public static int GetTraefikEntrypointPort(DbEngine engine) =>
+        engine switch
+        {
+            DbEngine.MySQL      => 3306,
+            DbEngine.PostgreSQL => 5432,
+            DbEngine.MSSQL      => 1433,
+            DbEngine.MongoDB    => 27017,
+            _ => throw new ArgumentOutOfRangeException(nameof(engine)),
+        };
+
     /// <summary>Trả về danh sách env vars cần inject vào container.</summary>
     public static List<string> GetEnvVars(DbEngine engine, string password) =>
         engine switch
